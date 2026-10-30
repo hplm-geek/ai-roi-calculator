@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI ROI Calculator</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #0f172a;
+    --muted: #475569;
+    --border: #d9dee5;
+    --accent: #0f766e;
+    --accent-soft: #e6f4f2;
+    --danger: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  p { margin: 0; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  /* Form */
+  .task-row { border-top: 1px solid var(--border); padding: 16px 0; }
+  .task-row:first-child { border-top: 0; padding-top: 0; }
+  .task-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .task-head strong { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  label { display: block; font-size: 14px; color: var(--muted); }
+  input, select {
+    width: 100%;
+    margin-top: 4px;
+    padding: 10px;
+    font: inherit;
+    color: var(--text);
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .description { margin-bottom: 12px; }
+  button {
+    font: inherit;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 10px 16px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.link { border: 0; padding: 4px 0; color: var(--danger); font-weight: 500; background: none; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+  .error { color: var(--danger); margin-top: 12px; }
+
+  /* Results */
+  .hero { background: var(--text); color: #fff; border: 0; }
+  .hero .label { color: #cbd5e1; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; }
+  .hero .big { font-size: 48px; font-weight: 800; line-height: 1.1; margin: 4px 0 8px; }
+  .hero .hours { font-size: 20px; font-weight: 600; }
+  .hero .summary { margin-top: 16px; color: #e2e8f0; }
+  .hero .assumption { margin-top: 12px; color: #94a3b8; font-size: 13px; }
+  .fallback { background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; margin-top: 16px; color: var(--text); }
+  .task-card h3 { font-size: 17px; margin: 0 0 12px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+  .stat .value { font-size: 22px; font-weight: 700; }
+  .stat .value.savings { color: var(--accent); }
+  .stat .name { font-size: 13px; color: var(--muted); }
+  .insight { color: var(--muted); border-left: 3px solid var(--accent); padding-left: 12px; }
+  .share input { margin: 0 0 12px; }
+
+  @media (max-width: 560px) {
+    .fields, .stats { grid-template-columns: 1fr; }
+    .hero .big { font-size: 38px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>AI ROI Calculator</h1>
+  <p class="subtitle">See how much time and money automating your recurring tasks could save each year.</p>
+
+  <form id="task-form" class="card" novalidate>
+    <h2>Your tasks (3 to 5)</h2>
+    <div id="task-list"></div>
+    <div class="actions">
+      <button type="button" id="add-task">+ Add task</button>
+      <button type="submit" id="submit" class="primary">Calculate savings</button>
+    </div>
+    <p id="form-error" class="error" hidden></p>
+  </form>
+
+  <section id="results" hidden>
+    <div id="results-content"></div>
+    <div class="card share">
+      <h2>Share these results</h2>
+      <input id="share-url" readonly aria-label="Shareable link">
+      <div class="actions">
+        <button type="button" id="copy-link" class="primary">Copy link</button>
+        <button type="button" id="start-over">New calculation</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<template id="task-template">
+  <div class="task-row">
+    <div class="task-head">
+      <strong class="task-number"></strong>
+      <button type="button" class="link remove-task">Remove</button>
+    </div>
+    <label class="description">Task description
+      <input name="description" maxlength="200" required placeholder="e.g. Entering invoices into accounting software">
+    </label>
+    <div class="fields">
+      <label>Hours each time
+        <input name="hours_per_occurrence" type="number" min="0.01" max="1000" step="any" required>
+      </label>
+      <label>How often
+        <select name="frequency">
+          <option value="daily">Daily</option>
+          <option value="weekly" selected>Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </label>
+      <label>Hourly rate ($)
+        <input name="hourly_rate" type="number" min="1" max="10000" step="any" required>
+      </label>
+    </div>
+  </div>
+</template>
+
+<script>
+  const MIN_TASKS = 3;
+  const MAX_TASKS = 5;
+
+  const form = document.getElementById("task-form");
+  const taskList = document.getElementById("task-list");
+  const addButton = document.getElementById("add-task");
+  const submitButton = document.getElementById("submit");
+  const formError = document.getElementById("form-error");
+  const resultsSection = document.getElementById("results");
+  const resultsContent = document.getElementById("results-content");
+  const shareInput = document.getElementById("share-url");
+
+  const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  const hours = (n) => `${Math.round(n).toLocaleString("en-US")} hrs`;
+
+  // ---------- Form: add / remove tasks ----------
+
+  function addTask() {
+    const row = document.getElementById("task-template").content.firstElementChild.cloneNode(true);
+    row.querySelector(".remove-task").addEventListener("click", () => {
+      row.remove();
+      refreshTaskControls();
+    });
+    taskList.appendChild(row);
+    refreshTaskControls();
+  }
+
+  function refreshTaskControls() {
+    const rows = taskList.querySelectorAll(".task-row");
+    rows.forEach((row, i) => {
+      row.querySelector(".task-number").textContent = `Task ${i + 1}`;
+      row.querySelector(".remove-task").disabled = rows.length <= MIN_TASKS;
+    });
+    addButton.disabled = rows.length >= MAX_TASKS;
+  }
+
+  function readTasks() {
+    return [...taskList.querySelectorAll(".task-row")].map((row) => ({
+      description: row.querySelector("[name=description]").value.trim(),
+      hours_per_occurrence: Number(row.querySelector("[name=hours_per_occurrence]").value),
+      frequency: row.querySelector("[name=frequency]").value,
+      hourly_rate: Number(row.querySelector("[name=hourly_rate]").value),
+    }));
+  }
+
+  function showFormError(message) {
+    formError.textContent = message;
+    formError.hidden = false;
+  }
+
+  addButton.addEventListener("click", addTask);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    formError.hidden = true;
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    submitButton.disabled = true;
+    submitButton.textContent = "Calculating…";
+    try {
+      const response = await fetch("/api/calculate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tasks: readTasks() }),
+      });
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
+      const results = await response.json();
+      history.replaceState(null, "", `#r=${encodeResults(results)}`);
+      showResults(results);
+    } catch (error) {
+      showFormError("Something went wrong calculating your savings. Please check your inputs and try again.");
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = "Calculate savings";
+    }
+  });
+
+  // ---------- Share link: results <-> base64url in the URL hash ----------
+  // The hash is never sent to the server, so a shared link renders without a backend call.
+
+  function encodeResults(results) {
+    const bytes = new TextEncoder().encode(JSON.stringify(results));
+    const binary = String.fromCharCode(...bytes);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function decodeResults(encoded) {
+    const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  // ---------- Results ----------
+  // Shared links can be edited by anyone, so all text is set with textContent, never innerHTML.
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function stat(value, name, isSavings) {
+    const box = el("div", "stat");
+    box.append(el("div", isSavings ? "value savings" : "value", value), el("div", "name", name));
+    return box;
+  }
+
+  function showResults(results) {
+    const { tasks, totals, narrative, automation_efficiency } = results;
+    resultsContent.replaceChildren();
+
+    const hero = el("div", "card hero");
+    hero.append(
+      el("p", "label", "Estimated annual savings"),
+      el("p", "big", money.format(totals.cost_saved)),
+      el("p", "hours", `${hours(totals.hours_saved)} back every year across ${tasks.length} tasks`),
+    );
+    if (narrative) {
+      hero.append(el("p", "summary", narrative.summary));
+    } else {
+      hero.append(el("p", "fallback", "AI insights temporarily unavailable — here are your numbers."));
+    }
+    hero.append(el("p", "assumption",
+      `Assumes automation saves ${Math.round(automation_efficiency * 100)}% of the time each task takes today.`));
+    resultsContent.append(hero);
+
+    tasks.forEach((task, i) => {
+      const card = el("div", "card task-card");
+      const stats = el("div", "stats");
+      stats.append(
+        stat(money.format(task.cost_saved), "saved per year", true),
+        stat(hours(task.hours_saved), "saved per year", true),
+        stat(money.format(task.annual_cost), "current yearly cost", false),
+      );
+      card.append(el("h3", "", task.description), stats);
+      if (narrative) card.append(el("p", "insight", narrative.task_insights[i]));
+      resultsContent.append(card);
+    });
+
+    shareInput.value = location.href;
+    form.hidden = true;
+    resultsSection.hidden = false;
+    window.scrollTo(0, 0);
+  }
+
+  document.getElementById("copy-link").addEventListener("click", async (event) => {
+    shareInput.select();
+    try {
+      await navigator.clipboard.writeText(shareInput.value);
+      event.target.textContent = "Copied!";
+    } catch {
+      event.target.textContent = "Press Ctrl/Cmd+C to copy";
+    }
+    setTimeout(() => { event.target.textContent = "Copy link"; }, 2000);
+  });
+
+  document.getElementById("start-over").addEventListener("click", () => {
+    history.replaceState(null, "", location.pathname);
+    resultsSection.hidden = true;
+    form.hidden = false;
+  });
+
+  // ---------- Start up ----------
+
+  for (let i = 0; i < MIN_TASKS; i++) addTask();
+
+  if (location.hash.startsWith("#r=")) {
+    try {
+      showResults(decodeResults(location.hash.slice(3)));
+    } catch {
+      history.replaceState(null, "", location.pathname);
+      showFormError("That share link looks incomplete or damaged. You can run a new calculation below.");
+    }
+  }
+</script>
+</body>
+</html>
